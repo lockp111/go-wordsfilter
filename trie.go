@@ -1,68 +1,81 @@
-package trie
+package wordsfilter
 
-// Trie tree
-type Trie struct {
+type trie struct {
 	root *node
 }
 
-// NewTrie ...
-func NewTrie() *Trie {
-	return &Trie{
-		root: newRoot(),
+func newTrie() *trie {
+	return &trie{
+		root: &node{
+			isRoot:   true,
+			children: make(map[rune]*node),
+		},
 	}
 }
 
-// Add add words
-func (t *Trie) Add(words ...string) {
+// AddWords add words
+func (t *trie) AddWords(words ...string) {
 	for _, word := range words {
 		t.add(word)
 	}
 }
 
-func (t *Trie) add(word string) {
-	var current = t.root
-	var runes = []rune(word)
-	for position := 0; position < len(runes); position++ {
-		r := runes[position]
-		if next, ok := current.children[r]; ok {
+func (t *trie) add(word string) {
+	var (
+		current = t.root
+		runes   = []rune(word)
+	)
+
+	for _, v := range runes {
+		if next := current.getChild(v); next != nil {
 			current = next
-		} else {
-			newNode := newNode(r)
-			current.children[r] = newNode
-			current = newNode
 		}
-		if position == len(runes)-1 {
-			current.isPathEnd = true
-		}
+
+		newNode := newChildren(v)
+		current.addChild(newNode)
+		current = newNode
 	}
+
+	current.isPathEnd = true
 }
 
-// Del delete words
-func (t *Trie) Del(words ...string) {
+// DelWords delete words
+func (t *trie) DelWords(words ...string) {
 	for _, word := range words {
 		t.del(word)
 	}
 }
 
-func (t *Trie) del(word string) {
-	var current = t.root
-	var runes = []rune(word)
-	for position := 0; position < len(runes); position++ {
-		r := runes[position]
-		if next, ok := current.children[r]; !ok {
+func (t *trie) del(word string) {
+	var (
+		current  = t.root
+		runes    = []rune(word)
+		nodeList []*node
+	)
+
+	for _, v := range runes {
+		next := current.getChild(v)
+		if next == nil {
 			return
-		} else {
-			current = next
 		}
 
-		/* if position == len(runes)-1 {
-			current.SoftDel()
-		} */
+		list := make([]*node, 0, len(nodeList)+1)
+		nodeList = append(append(list, next), nodeList...)
+		current = next
+	}
+
+	for k, v := range nodeList {
+		if k != 0 && v.isPathEnd {
+			return
+		} else if k == 0 && !v.isPathEnd {
+			return
+		}
+
+		nodeList[k+1].removeChild(v)
 	}
 }
 
-// Replace text replace
-func (t *Trie) Replace(text string, character rune) string {
+func (t *trie) replace(text string, character rune) string {
 	var (
 		parent  = t.root
 		current *node
@@ -94,8 +107,7 @@ func (t *Trie) Replace(text string, character rune) string {
 	return string(runes)
 }
 
-// Filter ...
-func (t *Trie) Filter(text string) string {
+func (t *trie) filter(text string) string {
 	var (
 		parent      = t.root
 		current     *node
@@ -130,8 +142,7 @@ func (t *Trie) Filter(text string) string {
 	return string(resultRunes)
 }
 
-// Validate ...
-func (t *Trie) Validate(text string) (bool, string) {
+func (t *trie) validate(text string) (bool, string) {
 	var (
 		parent  = t.root
 		current *node
@@ -161,14 +172,12 @@ func (t *Trie) Validate(text string) (bool, string) {
 	return true, ""
 }
 
-// FindIn ...
-func (t *Trie) FindIn(text string) (bool, string) {
-	validated, first := t.Validate(text)
+func (t *trie) findIn(text string) (bool, string) {
+	validated, first := t.validate(text)
 	return !validated, first
 }
 
-// FindAll ...
-func (t *Trie) FindAll(text string) []string {
+func (t *trie) findAll(text string) []string {
 	var matches []string
 	var (
 		parent  = t.root

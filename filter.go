@@ -7,20 +7,18 @@ import (
 	"os"
 	"regexp"
 	"time"
-
-	"github.com/lockp111/go-wordsfilter/trie"
 )
 
 // Filter 敏感词过滤器
 type Filter struct {
-	trie  *trie.Trie
+	*trie
 	noise *regexp.Regexp
 }
 
 // New 返回一个敏感词过滤器
 func New() *Filter {
 	return &Filter{
-		trie:  trie.NewTrie(),
+		trie:  newTrie(),
 		noise: regexp.MustCompile(`[\|\s&%$@*]+`),
 	}
 }
@@ -66,47 +64,37 @@ func (filter *Filter) Load(rd io.Reader) error {
 			}
 			break
 		}
-		filter.trie.Add(string(line))
+		filter.AddWords(string(line))
 	}
 
 	return nil
 }
 
-// AddWord 添加敏感词
-func (filter *Filter) AddWord(words ...string) {
-	filter.trie.Add(words...)
-}
-
-// DelWord 删除敏感词
-func (filter *Filter) DelWord(words ...string) {
-	filter.trie.Del(words...)
-}
-
 // Filter 过滤敏感词
 func (filter *Filter) Filter(text string) string {
-	return filter.trie.Filter(text)
+	return filter.filter(text)
 }
 
 // Replace 和谐敏感词
 func (filter *Filter) Replace(text string, repl rune) string {
-	return filter.trie.Replace(text, repl)
+	return filter.replace(text, repl)
 }
 
 // FindIn 检测敏感词
 func (filter *Filter) FindIn(text string) (bool, string) {
 	text = filter.RemoveNoise(text)
-	return filter.trie.FindIn(text)
+	return filter.findIn(text)
 }
 
 // FindAll 找到所有匹配词
 func (filter *Filter) FindAll(text string) []string {
-	return filter.trie.FindAll(text)
+	return filter.findAll(text)
 }
 
 // Validate 检测字符串是否合法
 func (filter *Filter) Validate(text string) (bool, string) {
 	text = filter.RemoveNoise(text)
-	return filter.trie.Validate(text)
+	return filter.validate(text)
 }
 
 // RemoveNoise 去除空格等噪音
