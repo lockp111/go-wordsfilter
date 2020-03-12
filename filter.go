@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/lockp111/go-wordfilter/trie"
+	"github.com/lockp111/go-wordsfilter/trie"
 )
 
 // Filter 敏感词过滤器
