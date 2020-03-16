@@ -213,3 +213,10 @@ func (f *Filter) RemoveNoise(text string) string {
 func (f *Filter) removeNoise(text string) string {
 	return f.noise.ReplaceAllString(text, "")
 }
+
+// UpdateTrie ...
+func (f *Filter) UpdateTrie(trie *Trie) {
+	f.mux.Lock()
+	defer f.mux.Unlock()
+	f.trie = trie
+}
