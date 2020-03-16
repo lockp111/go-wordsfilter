@@ -14,6 +14,10 @@ type Filter struct {
 
 // New ...
 func New(trie *Trie) *Filter {
+	if trie == nil {
+		trie = NewTrie()
+	}
+
 	return &Filter{
 		trie:  trie,
 		noise: regexp.MustCompile(`[\|\s&%$@*]+`),
