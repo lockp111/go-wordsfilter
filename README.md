@@ -69,7 +69,7 @@ newText := filter.FindAll("you bullshit")
 ```
 
 ## Filter UpdateNoisePattern
-set and remove noise word
+set and update noise word
 ```golang
 // failed
 filter.FindIn("you bull-shit")      // false
@@ -84,4 +84,12 @@ update trie
 trie := wordsfillter.NewTrie()
 trie.LoadWordDict("path/to/newDict")
 filter.UpdateTrie(trie)
+```
+
+## Filter RemoveNoise
+remove noise word
+```golang
+filter.UpdateNoisePattern(`-`)
+filter.RemoveNoise("you bull-shit")
+// output => you bullshit
 ```
