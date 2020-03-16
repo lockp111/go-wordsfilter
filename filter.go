@@ -1,103 +1,215 @@
 package wordsfilter
 
 import (
-	"bufio"
-	"io"
-	"net/http"
-	"os"
 	"regexp"
-	"time"
+	"sync"
 )
 
-// Filter 敏感词过滤器
+// Filter ...
 type Filter struct {
-	*trie
+	trie  *Trie
+	mux   sync.RWMutex
 	noise *regexp.Regexp
 }
 
-// New 返回一个敏感词过滤器
-func New() *Filter {
+// New ...
+func New(trie *Trie) *Filter {
 	return &Filter{
-		trie:  newTrie(),
+		trie:  trie,
 		noise: regexp.MustCompile(`[\|\s&%$@*]+`),
 	}
 }
 
 // UpdateNoisePattern 更新去噪模式
-func (filter *Filter) UpdateNoisePattern(pattern string) {
-	filter.noise = regexp.MustCompile(pattern)
+func (f *Filter) UpdateNoisePattern(pattern string) {
+	f.mux.Lock()
+	defer f.mux.Unlock()
+
+	f.noise = regexp.MustCompile(pattern)
 }
 
-// LoadWordDict 加载敏感词字典
-func (filter *Filter) LoadWordDict(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
+// Filter ...
+func (f *Filter) Filter(text string) string {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
 
-	return filter.Load(f)
-}
+	var (
+		parent      = f.trie.root
+		current     *node
+		left        = 0
+		runes       = []rune(text)
+		length      = len(runes)
+		resultRunes = make([]rune, 0, length)
+	)
 
-// LoadNetWordDict 加载网络敏感词字典
-func (filter *Filter) LoadNetWordDict(url string) error {
-	c := http.Client{
-		Timeout: 5 * time.Second,
-	}
-	rsp, err := c.Get(url)
-	if err != nil {
-		return err
-	}
-	defer rsp.Body.Close()
-
-	return filter.Load(rsp.Body)
-}
-
-// Load common method to add words
-func (filter *Filter) Load(rd io.Reader) error {
-	buf := bufio.NewReader(rd)
-	for {
-		line, _, err := buf.ReadLine()
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-			break
+	for position := 0; position < length; position++ {
+		current = parent.getChild(runes[position])
+		if current == nil || (!current.isPathEnd && position == length-1) {
+			resultRunes = append(resultRunes, runes[left])
+			parent = f.trie.root
+			position = left
+			left++
+			continue
 		}
-		filter.AddWords(string(line))
+
+		if current.isPathEnd {
+			left = position + 1
+			parent = f.trie.root
+		} else {
+			parent = current
+		}
+
+	}
+
+	resultRunes = append(resultRunes, runes[left:]...)
+	return string(resultRunes)
+}
+
+// Replace ...
+func (f *Filter) Replace(text string, repl rune) string {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	var (
+		parent  = f.trie.root
+		current *node
+		runes   = []rune(text)
+		length  = len(runes)
+		left    = 0
+	)
+
+	for position := 0; position < len(runes); position++ {
+		current = parent.getChild(runes[position])
+
+		if current == nil || (!current.isPathEnd && position == length-1) {
+			parent = f.trie.root
+			position = left
+			left++
+			continue
+		}
+
+		if current.isPathEnd && left <= position {
+			for i := left; i <= position; i++ {
+				runes[i] = repl
+			}
+		}
+
+		parent = current
+	}
+	return string(runes)
+}
+
+// FindIn ...
+func (f *Filter) FindIn(text string) (bool, string) {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	text = f.removeNoise(text)
+	validated, first := f.Validate(text)
+	return !validated, first
+}
+
+// FindAll ...
+func (f *Filter) FindAll(text string) []string {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	text = f.removeNoise(text)
+	var (
+		matches []string
+		parent  = f.trie.root
+		current *node
+		runes   = []rune(text)
+		length  = len(runes)
+		left    = 0
+	)
+
+	for position := 0; position < length; position++ {
+		current = parent.getChild(runes[position])
+
+		if current == nil {
+			parent = f.trie.root
+			position = left
+			left++
+			continue
+		}
+
+		if current.isPathEnd && left <= position {
+			matches = append(matches, string(runes[left:position+1]))
+		}
+
+		if position == length-1 {
+			parent = f.trie.root
+			position = left
+			left++
+			continue
+		}
+
+		parent = current
+	}
+
+	var i = 0
+	if count := len(matches); count > 0 {
+		set := make(map[string]struct{})
+		for i < count {
+			_, ok := set[matches[i]]
+			if !ok {
+				set[matches[i]] = struct{}{}
+				i++
+				continue
+			}
+			count--
+			copy(matches[i:], matches[i+1:])
+		}
+		return matches[:count]
 	}
 
 	return nil
 }
 
-// Filter 过滤敏感词
-func (filter *Filter) Filter(text string) string {
-	return filter.filter(text)
+// Validate ...
+func (f *Filter) Validate(text string) (bool, string) {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	text = f.removeNoise(text)
+
+	var (
+		parent  = f.trie.root
+		current *node
+		runes   = []rune(text)
+		length  = len(runes)
+		left    = 0
+	)
+
+	for position := 0; position < len(runes); position++ {
+		current = parent.getChild(runes[position])
+
+		if current == nil || (!current.isPathEnd && position == length-1) {
+			parent = f.trie.root
+			position = left
+			left++
+			continue
+		}
+
+		if current.isPathEnd && left <= position {
+			return false, string(runes[left : position+1])
+		}
+
+		parent = current
+	}
+
+	return true, ""
 }
 
-// Replace 和谐敏感词
-func (filter *Filter) Replace(text string, repl rune) string {
-	return filter.replace(text, repl)
+// RemoveNoise ...
+func (f *Filter) RemoveNoise(text string) string {
+	f.mux.RLock()
+	defer f.mux.RUnlock()
+
+	return f.noise.ReplaceAllString(text, "")
 }
 
-// FindIn 检测敏感词
-func (filter *Filter) FindIn(text string) (bool, string) {
-	text = filter.RemoveNoise(text)
-	return filter.findIn(text)
-}
-
-// FindAll 找到所有匹配词
-func (filter *Filter) FindAll(text string) []string {
-	return filter.findAll(text)
-}
-
-// Validate 检测字符串是否合法
-func (filter *Filter) Validate(text string) (bool, string) {
-	text = filter.RemoveNoise(text)
-	return filter.validate(text)
-}
-
-// RemoveNoise 去除空格等噪音
-func (filter *Filter) RemoveNoise(text string) string {
-	return filter.noise.ReplaceAllString(text, "")
+func (f *Filter) removeNoise(text string) string {
+	return f.noise.ReplaceAllString(text, "")
 }
