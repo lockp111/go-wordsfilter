@@ -108,7 +108,6 @@ func (f *Filter) FindIn(text string) (bool, string) {
 	f.mux.RLock()
 	defer f.mux.RUnlock()
 
-	text = f.RemoveNoise(text)
 	validated, first := f.Validate(text)
 	return !validated, first
 }
@@ -118,7 +117,6 @@ func (f *Filter) FindAll(text string) []string {
 	f.mux.RLock()
 	defer f.mux.RUnlock()
 
-	text = f.RemoveNoise(text)
 	var (
 		matches []string
 		parent  = f.trie.root
@@ -175,8 +173,6 @@ func (f *Filter) FindAll(text string) []string {
 func (f *Filter) Validate(text string) (bool, string) {
 	f.mux.RLock()
 	defer f.mux.RUnlock()
-
-	text = f.RemoveNoise(text)
 
 	var (
 		parent  = f.trie.root
